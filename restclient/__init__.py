@@ -75,6 +75,7 @@ n                          and we now use post_multipart for everything since it
 
 
 import urllib2,urllib, mimetypes, types, thread, httplib2
+import simplejson
 
 __version__ = "0.10.1"
 
@@ -146,7 +147,7 @@ def GET(url,params=None,files=None,accept=[],headers=None,async=False,resp=False
     """
     return rest_invoke(url=url,method=u"GET",params=params,files=files,accept=accept,headers=headers,async=async,resp=resp,credentials=credentials)
 
-def POST(url,params=None,files=None,accept=[],headers=None,async=True,resp=False,credentials=None):
+def POST(url,params=None,json_body=None,files=None,accept=[],headers=None,async=True,resp=False,credentials=None):
     """ make an HTTP POST request.
 
     performs a POST request to the specified URL.
@@ -167,9 +168,9 @@ def POST(url,params=None,files=None,accept=[],headers=None,async=True,resp=False
     if resp=True is passed in, it will return a tuple of an httplib2 response object
     and the content instead of just the content. 
     """
-    return rest_invoke(url=url,method=u"POST",params=params,files=files,accept=accept,headers=headers,async=async,resp=resp,credentials=credentials)
+    return rest_invoke(url=url,method=u"POST",params=params,json_body=json_body,files=files,accept=accept,headers=headers,async=async,resp=resp,credentials=credentials)
 
-def PUT(url,params=None,files=None,accept=[],headers=None,async=True,resp=False,credentials=None):
+def PUT(url,params=None,json_body=None,files=None,accept=[],headers=None,async=True,resp=False,credentials=None):
     """ make an HTTP PUT request.
 
     performs a PUT request to the specified URL.
@@ -191,7 +192,7 @@ def PUT(url,params=None,files=None,accept=[],headers=None,async=True,resp=False,
     and the content instead of just the content. 
     """
 
-    return rest_invoke(url=url,method=u"PUT",params=params,files=files,accept=accept,headers=headers,async=async,resp=resp,credentials=credentials)
+    return rest_invoke(url=url,method=u"PUT",json_body=json_body,params=params,files=files,accept=accept,headers=headers,async=async,resp=resp,credentials=credentials)
 
 def DELETE(url,params=None,files=None,accept=[],headers=None,async=True,resp=False,credentials=None):
     """ make an HTTP DELETE request.
@@ -211,7 +212,7 @@ def DELETE(url,params=None,files=None,accept=[],headers=None,async=True,resp=Fal
     
     return rest_invoke(url=url,method=u"DELETE",params=params,files=files,accept=accept,headers=headers,async=async,resp=resp,credentials=credentials)
 
-def rest_invoke(url,method=u"GET",params=None,files=None,accept=[],headers=None,async=False,resp=False,httpcallback=None,credentials=None):
+def rest_invoke(url,method=u"GET",params=None,json_body=None,files=None,accept=[],headers=None,async=False,resp=False,httpcallback=None,credentials=None):
     """ make an HTTP request with all the trimmings.
 
     rest_invoke() will make an HTTP request and can handle all the
@@ -252,11 +253,12 @@ def rest_invoke(url,method=u"GET",params=None,files=None,accept=[],headers=None,
     
     """
     if async:
-        thread.start_new_thread(_rest_invoke,(url,method,params,files,accept,headers,resp,httpcallback,credentials))
+        thread.start_new_thread(_rest_invoke,(url,method,params,json_body,files,accept,headers,resp,httpcallback,credentials))
     else:
-        return _rest_invoke(url,method,params,files,accept,headers,resp,httpcallback,credentials)
+        return _rest_invoke(url,method,params,json_body,files,accept,headers,resp,httpcallback,credentials)
 
-def _rest_invoke(url,method=u"GET",params=None,files=None,accept=None,headers=None,resp=False,httpcallback=None,credentials=None):
+def _rest_invoke(url,method=u"GET",params=None,json_body=None,files=None,accept=None,headers=None,resp=False,httpcallback=None,credentials=None):
+    
     if params  is None: params  = {}
     if files   is None: files   = {}
     if accept  is None: accept  = []
@@ -297,12 +299,12 @@ def _rest_invoke(url,method=u"GET",params=None,files=None,accept=None,headers=No
                               resp, scheme=extract_scheme(url),
                               credentials=credentials)
     else:
-        return non_multipart(fix_params(params), extract_host(url),
+        return non_multipart(fix_params(params), json_body, extract_host(url),
                              method, extract_path(url), fix_headers(headers),resp,
                              scheme=extract_scheme(url),
                              credentials=credentials)
 
-def non_multipart(params,host,method,path,headers,return_resp,scheme="http",credentials=None):
+def non_multipart(params, json_body, host,method,path,headers,return_resp,scheme="http",credentials=None):
     params = urllib.urlencode(params)
     if method == "GET":
         headers['Content-Length'] = '0'
@@ -324,7 +326,14 @@ def non_multipart(params,host,method,path,headers,return_resp,scheme="http",cred
     if credentials:
         h.add_credentials(*credentials)
     url = "%s://%s%s" % (scheme,host,path)
-    resp,content = h.request(url,method.encode('utf-8'),params.encode('utf-8'),headers)
+
+    if json_body is not None:
+        body = simplejson.dumps(json_body)
+        headers['Content-Length'] = str(len(body))
+    else:
+        body = params.encode('utf-8')
+
+    resp,content = h.request(url,method.encode('utf-8'),body,headers)
     if return_resp:
         return resp,content
     else:
